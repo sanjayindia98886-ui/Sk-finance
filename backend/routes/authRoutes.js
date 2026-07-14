@@ -1,68 +1,65 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const { protect } = require('../middleware/authMiddleware'); // सुरक्षा मिडलवेयर
-const bcrypt = require('bcryptjs'); // पासवर्ड हैश करने के लिए
-const User = require('../models/User'); // यूजर मॉडल
-const { registerUser, loginUser, getUserProfile, updateCompanyName } = require('../controllers/authController');
+const { protect } = require('../middleware/authMiddleware'); 
+const bcrypt = require('bcryptjs'); 
+const User = require('../models/User'); 
 
-// नया यूजर रजिस्टर करने का रास्ता
-router.post('/register', authController.registerUser);
+const { registerUser, loginUser, getUserProfile, updateCompanyName } = authController;
 
-// USER लॉगिन करने का रास्ता
-router.post('/login', authController.loginUser);
+// Route for registering a new user
+router.post('/register', registerUser || authController.registerUser);
 
-// लॉगिन किए हुए यूजर की प्रोफाइल निकालने का रास्ता
-router.get('/me', protect, authController.getUserProfile);
+// Route for user login
+router.post('/login', loginUser || authController.loginUser);
 
+// Route to get logged-in user's profile
+router.get('/me', protect, getUserProfile || authController.getUserProfile);
+
+// Route to update user's company name
 router.put('/update-company', protect, updateCompanyName);
 
-// 🔒 पासवर्ड भूल जाने पर रिसेट करने का रास्ता
+// Route to reset password if forgotten
 router.put('/forgot-password', async (req, res) => {
     try {
         const { email, newPassword } = req.body;
         
-        // 1. यूजर को ईमेल से ढूंढें
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ message: 'यह ईमेल रजिस्टर नहीं है!' });
+            return res.status(404).json({ message: 'This email is not registered!' });
         }
 
-        // 2. नए पासवर्ड को हैश करें
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(newPassword, salt);
 
-        // 3. नया पासवर्ड डेटाबेस में सेव करें
         await user.save();
-        res.json({ message: 'पासवर्ड सफलतापूर्वक बदल गया है!' });
+        res.json({ message: 'Password reset successfully!' });
     } catch (error) {
-        res.status(500).json({ message: 'सर्वर एरर: ' + error.message });
+        res.status(500).json({ message: 'Server Error: ' + error.message });
     }
 });
 
-// 🟢 [नया राउट 1]: सभी यूज़र्स की लिस्ट निकालना (सिर्फ सुपर एडमिन देख पाएगा)
+// Admin Route: Get list of all users (Super Admin only)
 router.get('/admin/users', protect, async (req, res) => {
     try {
-        // चेक करें कि रिक्वेस्ट करने वाला खुद super_admin है या नहीं
         const adminUser = await User.findById(req.user.id);
         if (adminUser.role !== 'super_admin') {
-            return res.status(403).json({ message: 'अनऑथराइज्ड एक्सेस! आप सुपर एडमिन नहीं हैं।' });
+            return res.status(403).json({ message: 'Unauthorized access! You are not a super admin.' });
         }
 
-        // खुद सुपर एडमिन को छोड़कर बाकी सभी यूज़र्स की लिस्ट निकालें
         const users = await User.find({ role: { $ne: 'super_admin' } }).select('-password');
         res.json(users);
     } catch (error) {
-        res.status(500).json({ message: 'सर्वर एरर: ' + error.message });
+        res.status(500).json({ message: 'Server Error: ' + error.message });
     }
 });
 
-// 🟢 [नया राउट 2]: यूजर का स्टेटस अपडेट करना (Approve और Payment Status 'Paid' करना)
+// Admin Route: Update user approval and payment status
 router.put('/admin/update-status/:id', protect, async (req, res) => {
     try {
         const adminUser = await User.findById(req.user.id);
         if (adminUser.role !== 'super_admin') {
-            return res.status(403).json({ message: 'अनऑथराइज्ड एक्सेस!' });
+            return res.status(403).json({ message: 'Unauthorized access!' });
         }
 
         const { isApproved, paymentStatus } = req.body;
@@ -73,9 +70,9 @@ router.put('/admin/update-status/:id', protect, async (req, res) => {
             { new: true }
         ).select('-password');
 
-        res.json({ message: 'यूजर स्टेटस सफलतापूर्वक अपडेट हुआ!', user: updatedUser });
+        res.json({ message: 'User status updated successfully!', user: updatedUser });
     } catch (error) {
-        res.status(500).json({ message: 'सर्वर एरर: ' + error.message });
+        res.status(500).json({ message: 'Server Error: ' + error.message });
     }
 });
 
